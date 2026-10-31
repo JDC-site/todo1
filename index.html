@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>シンプルTodo</title>
+<style>
+  :root{
+    --bg:#f4f6fa; --card:#fff; --text:#1f2937; --sub:#6b7280; --line:#e5e7eb;
+    --accent:#3b82f6; --accent-d:#2563eb; --danger:#ef4444; --done:#9ca3af;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f172a; --card:#1e293b; --text:#e5e7eb; --sub:#94a3b8; --line:#334155; --done:#64748b; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+    display:flex;justify-content:center;padding:40px 16px}
+  .app{width:100%;max-width:560px}
+  h1{font-size:24px;margin:0 0 4px}
+  .date{color:var(--sub);font-size:14px;margin-bottom:20px}
+  .card{background:var(--card);border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);overflow:hidden}
+  form{display:flex;gap:8px;padding:16px;border-bottom:1px solid var(--line)}
+  form input{flex:1;font-size:16px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+    background:transparent;color:var(--text);outline:none}
+  form input:focus{border-color:var(--accent)}
+  form button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:0 20px;font-size:16px;cursor:pointer}
+  form button:hover{background:var(--accent-d)}
+  .tabs{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line)}
+  .tabs button{background:none;border:0;color:var(--sub);font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+  .tabs button.on{background:var(--accent);color:#fff}
+  ul{list-style:none;margin:0;padding:0;min-height:60px}
+  li{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+  li:last-child{border-bottom:0}
+  li input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  li .t{flex:1;word-break:break-all;font-size:16px;cursor:text}
+  li.done .t{text-decoration:line-through;color:var(--done)}
+  li .edit{flex:1;font-size:16px;padding:6px 8px;border:1px solid var(--accent);border-radius:6px;
+    background:transparent;color:var(--text)}
+  li .del{background:none;border:0;color:var(--sub);font-size:20px;cursor:pointer;opacity:.5;line-height:1}
+  li:hover .del{opacity:1;color:var(--danger)}
+  .empty{text-align:center;color:var(--sub);padding:28px 0;font-size:14px}
+  .foot{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;
+    border-top:1px solid var(--line);font-size:14px;color:var(--sub)}
+  .foot button{background:none;border:0;color:var(--sub);cursor:pointer;font-size:14px}
+  .foot button:hover{color:var(--danger)}
+  .hint{text-align:center;color:var(--sub);font-size:12px;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>📝 Todo</h1>
+  <div class="date" id="date"></div>
+  <div class="card">
+    <form id="form">
+      <input id="input" type="text" placeholder="やることを入力して Enter" autocomplete="off" autofocus>
+      <button type="submit">追加</button>
+    </form>
+    <div class="tabs" id="tabs">
+      <button data-f="all" class="on">すべて</button>
+      <button data-f="active">未完了</button>
+      <button data-f="done">完了</button>
+    </div>
+    <ul id="list"></ul>
+    <div class="foot">
+      <span id="count"></span>
+      <button id="clear">完了済みを削除</button>
+    </div>
+  </div>
+  <div class="hint">テキストをクリックで編集 ・ 自動保存されます</div>
+</div>
+<script>
+(function(){
+  var KEY = "simple-todo-v1";
+  var todos = [], filter = "all";
+  try { todos = JSON.parse(localStorage.getItem(KEY)) || []; } catch(e){}
+
+  var $ = function(id){ return document.getElementById(id); };
+  var list = $("list"), input = $("input");
+
+  var d = new Date(), w = ["日","月","火","水","木","金","土"];
+  $("date").textContent = d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日("+w[d.getDay()]+")";
+
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(todos)); } catch(e){} }
+
+  function render(){
+    list.innerHTML = "";
+    var shown = todos.filter(function(t){
+      return filter==="all" || (filter==="active" ? !t.done : t.done);
+    });
+    if(!shown.length){
+      var e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = todos.length ? "該当するタスクはありません" : "タスクを追加しましょう ✨";
+      list.appendChild(e);
+    }
+    shown.forEach(function(t){
+      var li = document.createElement("li");
+      if(t.done) li.className = "done";
+
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = t.done;
+      cb.onchange = function(){ t.done = cb.checked; save(); render(); };
+
+      var span = document.createElement("span");
+      span.className = "t"; span.textContent = t.text;
+      span.onclick = function(){ startEdit(li, span, t); };
+
+      var del = document.createElement("button");
+      del.className = "del"; del.textContent = "×"; del.title = "削除";
+      del.onclick = function(){ todos = todos.filter(function(x){ return x!==t; }); save(); render(); };
+
+      li.appendChild(cb); li.appendChild(span); li.appendChild(del);
+      list.appendChild(li);
+    });
+    var left = todos.filter(function(t){ return !t.done; }).length;
+    $("count").textContent = "残り " + left + " 件 / 全 " + todos.length + " 件";
+  }
+
+  function startEdit(li, span, t){
+    var ed = document.createElement("input");
+    ed.className = "edit"; ed.value = t.text;
+    li.replaceChild(ed, span);
+    ed.focus(); ed.select();
+    var finished = false;
+    function finish(ok){
+      if(finished) return; finished = true;
+      var v = ed.value.trim();
+      if(ok && v) t.text = v;
+      save(); render();
+    }
+    ed.onkeydown = function(e){
+      if(e.key==="Enter") finish(true);
+      if(e.key==="Escape") finish(false);
+    };
+    ed.onblur = function(){ finish(true); };
+  }
+
+  $("form").onsubmit = function(e){
+    e.preventDefault();
+    var v = input.value.trim();
+    if(!v) return;
+    todos.unshift({ text:v, done:false });
+    input.value = "";
+    save(); render();
+  };
+
+  $("tabs").onclick = function(e){
+    var f = e.target.getAttribute("data-f");
+    if(!f) return;
+    filter = f;
+    Array.prototype.forEach.call($("tabs").children, function(b){
+      b.className = b.getAttribute("data-f")===f ? "on" : "";
+    });
+    render();
+  };
+
+  $("clear").onclick = function(){
+    if(!todos.some(function(t){ return t.done; })) return;
+    if(confirm("完了済みのタスクをすべて削除しますか?")){
+      todos = todos.filter(function(t){ return !t.done; });
+      save(); render();
+    }
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
